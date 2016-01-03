@@ -1,6 +1,6 @@
 # Laser Cutter V2 Safety Controller
 
--This controller monitors interlock circuits, coolant flow rate and coolant temperature. It opens or closes a relay if any of the interlocks are in a non-ready state and displays its status on a 20x4 character LCD.-
+*This controller monitors interlock circuits, coolant flow rate and coolant temperature. It opens or closes a relay if any of the interlocks are in a non-ready state and displays its status on a 20x4 character LCD.*
 
 It uses the following hardware:
 
