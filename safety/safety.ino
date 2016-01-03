@@ -15,7 +15,8 @@ const float flow_rate_lower_limit = 0.5; //lower limit of flow rate (litres per 
 const int flow_sensor_pin = 2; //flow rate sensor pin
 const int temp_sensor_pin = 3; //temperature sensor pin
 
-const boolean bypass_sensors = false; //ignore temp and flow sensors - for testing switches with machine off
+const boolean bypass_sensors = true; //ignore temp and flow sensors - for testing switches with machine off
+const boolean bypass_interlocks = false; //don't disable the laser if the interlocks are open (set true to not monitor the interlock circuit)
 //CONFIG END
 
 //Date and time functions using the DS1307 RTC connected via I2C and Wire lib
@@ -99,12 +100,11 @@ boolean enable_hv_interlock(boolean state) {
   }
 }
 
-//track which fault has ocurred
-int current_faults = 0; //0 = all good, 1 = interlocks, 2 = estop, 3 = key off, 4 = flow rate, 5 = temperature
-String fault_messages[] = { "READY" , "CLOSE COVERS" , "E-STOP PRESS" , "KEY OFF" , "CHECK FLOW" , "CHECK TEMP" };
+//the messages to display for each fault condition - each string should be 12 chars long ("STATUS: " + message = 20 chars)
+String fault_messages[] = { "READY       " , "CLOSE COVERS" , "E-STOP PRESS" , "KEY OFF     " , "CHECK FLOW  " , "CHECK TEMP  " };
 
 int long loop_last_millis = 0; //track the exact ms length of the loop so we calculate exact flow rate values
-float loop_duration = 250; //delay between loop runs, in ms
+float loop_duration = 50; //delay between loop runs, in ms
 void loop () {
    
   //track exactly how long since loop last ran and make sure we run it every x ms exactly
@@ -119,8 +119,8 @@ void loop () {
   //convert to L/min based on number of pulses since the loop last ran
   float flow_rate = (flow_pulses / 450.00) * 60.00 * (1000.00 / loop_duration);
 
-  //reset to 0 for this loop
-  current_faults = 0;
+  //track which fault has ocurred
+  int current_faults = 0; //0 = all good, 1 = interlocks, 2 = estop, 3 = key off, 4 = flow rate, 5 = temperature
 
   //display the date / time
   lcd.home(); //set cursor to 0,0
@@ -138,17 +138,20 @@ void loop () {
   //fault values:
   //0 = all good, 1 = interlocks, 2 = estop, 3 = key off, 4 = flow rate, 5 = temperature
   
-  //if interlock switches were opened
-  if (digitalRead(interlock_pin) == LOW) {
-    current_faults = 1; //interlocks opened
+  //skip interlocks if true
+   if (!bypass_interlocks) {
+    //if interlock switches were opened
+    if (digitalRead(interlock_pin) == LOW) {
+      current_faults = 1; //interlocks opened
+    }
+    if (digitalRead(estop_pin) == LOW) {
+      current_faults = 2; //estop pressed
+    }
+    if (digitalRead(key_pin) == LOW) {
+      current_faults = 3; //key not turned on
+    }
   }
-  if (digitalRead(estop_pin) == LOW) {
-    current_faults = 2; //estop pressed
-  }
-  if (digitalRead(key_pin) == LOW) {
-    current_faults = 3; //key not turned on
-  }
-  //skip these two sensors
+  //skip these two sensors if true
   if (!bypass_sensors) {
     if (flow_rate > flow_rate_upper_limit || flow_rate < flow_rate_lower_limit) {
       current_faults = 4; //flow rate outside acceptable limits
