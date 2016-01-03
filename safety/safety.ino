@@ -1,6 +1,5 @@
-// Hello :)
 //
-// temp sensor is a: DS18B20
+// Hello :)
 //
 
 //CONFIG START
@@ -14,6 +13,8 @@ const float flow_rate_upper_limit = 3.0; //upper limit of flow rate (litres per 
 const float flow_rate_lower_limit = 0.5; //lower limit of flow rate (litres per minute)
 const int flow_sensor_pin = 2; //flow rate sensor pin
 const int temp_sensor_pin = 3; //temperature sensor pin
+const float water_temp_upper_limit = 35.0; //water temp upper limit in degC
+const float water_temp_lower_limit = 8.0; //water temp lower limit in degC
 
 const boolean bypass_sensors = true; //ignore temp and flow sensors - for testing switches with machine off
 const boolean bypass_interlocks = false; //don't disable the laser if the interlocks are open (set true to not monitor the interlock circuit)
@@ -23,12 +24,17 @@ const boolean bypass_interlocks = false; //don't disable the laser if the interl
 #include "Wire.h" //I2C
 #include "RTClib.h" //RTC
 #include "LiquidCrystal_I2C.h" //LCD
+#include "DallasTemperature.h" //temp sensor
 
 //create the LCD object. firs param is the address. no idea what other params are, they were in the tronixlabs's example code. seems to work.
 LiquidCrystal_I2C	lcd(0x3f,2,1,0,4,5,6,7); //0x27 is the default I2C bus address for an unmodified backpack [mine uses 0x3f]
 
 //create the RTC object
 RTC_DS1307 RTC;
+
+//set up the temp sensor
+OneWire tempWire(temp_sensor_pin);
+DallasTemperature temp_sensor(&tempWire);
 
 //the flow sensor hardware interrupt function
 volatile uint16_t flow_pulses = 0; //stores the number of pulses between calls of the main loop
@@ -60,6 +66,9 @@ void setup () {
     //uncomment it & upload to set the time and start the RTC!
     //RTC.adjust(DateTime(__DATE__, __TIME__));
   } 
+  
+  //===temp sensor setup===
+  temp_sensor.begin();
   
   //===LCD setup====
   lcd.begin (20,4); //for 20 x 4 LCD module
@@ -103,8 +112,12 @@ boolean enable_hv_interlock(boolean state) {
 //the messages to display for each fault condition - each string should be 12 chars long ("STATUS: " + message = 20 chars)
 String fault_messages[] = { "READY       " , "CLOSE COVERS" , "E-STOP PRESS" , "KEY OFF     " , "CHECK FLOW  " , "CHECK TEMP  " };
 
+//character to animate to show controller is responding
+String display_anim[] = { "-   ", " -  ", "  - ", "   -" };
+int cur_anim = 0;
+
 int long loop_last_millis = 0; //track the exact ms length of the loop so we calculate exact flow rate values
-float loop_duration = 50; //delay between loop runs, in ms
+float loop_duration = 250; //delay between loop runs, in ms
 void loop () {
    
   //track exactly how long since loop last ran and make sure we run it every x ms exactly
@@ -124,9 +137,21 @@ void loop () {
 
   //display the date / time
   lcd.home(); //set cursor to 0,0
-  lcd.print("Current Date/Time:");
+  lcd.print("Laser Cutter V2 " + display_anim[cur_anim]);
+  cur_anim++;
+  if (cur_anim == 4) {
+    cur_anim = 0;
+  }
+  
+  //get water temp
+  float water_temp = temp_sensor.getTempCByIndex(0);
+  
+  //display temp
   lcd.setCursor(0,1); //go to start of 2nd line
-  lcd.print(getTime()); //print date/time
+  temp_sensor.requestTemperatures();
+  lcd.print("Temp: ");
+  lcd.print(water_temp); //print reading
+  lcd.print("degC    ");
 
   //display the flow rate
   lcd.setCursor(0,2); //3rd line
@@ -156,7 +181,7 @@ void loop () {
     if (flow_rate > flow_rate_upper_limit || flow_rate < flow_rate_lower_limit) {
       current_faults = 4; //flow rate outside acceptable limits
     }
-    if (!true) { //TO DO: add temp sensing code here
+    if (water_temp > water_temp_upper_limit || water_temp < water_temp_lower_limit) {
       current_faults = 5; //temp outside acceptable limits
     }
   }
