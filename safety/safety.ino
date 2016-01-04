@@ -1,17 +1,19 @@
 //
-// Hello :)
+// Hello :) visit hackmelbourne.org
+//
+// TODO: data logging using SD card
 //
 
 //CONFIG START
-const int mega_reset_pin = 9; //the reset pin on the RAMPS to pull low
+const int mega_reset_pin = 9; //the output pin to pull low for resetting the RAMPS
 const int hv_interlock_pin = 10; //the output pin driving the relay to interrupt the interlock circuit
 const int ready_led_pin = 11; //LED to show HV supply is READY (no interlocks opened)
 const int interlock_pin = 6; //interlock circuit pin (+5V to pin when CLOSED - should have PULL DOWN resistor)
 const int estop_pin = 7; //emergency stop button/switch (+5V to pin when CLOSED - should have PULL DOWN resistor)
 const int key_pin = 8; //security key (switch) (+5V to pin when CLOSED - should have PULL DOWN resistor)
+const int flow_sensor_pin = 2; //flow rate sensor pin
 const float flow_rate_upper_limit = 3.0; //upper limit of flow rate (litres per minute)
 const float flow_rate_lower_limit = 0.5; //lower limit of flow rate (litres per minute)
-const int flow_sensor_pin = 2; //flow rate sensor pin
 const int temp_sensor_pin = 3; //temperature sensor pin
 const float water_temp_upper_limit = 35.0; //water temp upper limit in degC
 const float water_temp_lower_limit = 8.0; //water temp lower limit in degC
@@ -101,10 +103,12 @@ boolean enable_hv_interlock(boolean state) {
 
   if (state) {
     digitalWrite(hv_interlock_pin, HIGH);
+    digitalWrite(mega_reset_pin, HIGH);
     digitalWrite(ready_led_pin, HIGH);
   }
   else {
     digitalWrite(hv_interlock_pin, LOW);
+    digitalWrite(mega_reset_pin, LOW);
     digitalWrite(ready_led_pin, LOW);
   }
 }
@@ -112,7 +116,7 @@ boolean enable_hv_interlock(boolean state) {
 //the messages to display for each fault condition - each string should be 12 chars long ("STATUS: " + message = 20 chars)
 String fault_messages[] = { "READY       " , "CLOSE COVERS" , "E-STOP PRESS" , "KEY OFF     " , "CHECK FLOW  " , "CHECK TEMP  " };
 
-//character to animate to show controller is responding
+//characters to animate to show the controller is responding
 String display_anim[] = { "-   ", " -  ", "  - ", "   -" };
 int cur_anim = 0;
 
@@ -131,6 +135,7 @@ void loop () {
   //450 pulses per litre as per https://www.adafruit.com/products/828
   //convert to L/min based on number of pulses since the loop last ran
   float flow_rate = (flow_pulses / 450.00) * 60.00 * (1000.00 / loop_duration);
+  flow_pulses = 0; //now that the value is read, reset the pulses until next read
 
   //track which fault has ocurred
   int current_faults = 0; //0 = all good, 1 = interlocks, 2 = estop, 3 = key off, 4 = flow rate, 5 = temperature
@@ -157,7 +162,6 @@ void loop () {
   lcd.setCursor(0,2); //3rd line
   lcd.print("Flow: ");
   lcd.print(flow_rate);
-  flow_pulses = 0;
   lcd.print(" (l/pm)");
 
   //fault values:
@@ -198,6 +202,4 @@ void loop () {
   lcd.setCursor(0,3); //3rd line
   lcd.print("STATUS: " + fault_messages[current_faults]);
   
-  
 }
-
