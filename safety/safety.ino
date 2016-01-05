@@ -12,14 +12,15 @@ const int interlock_pin = 6; //interlock circuit pin (+5V to pin when CLOSED - s
 const int estop_pin = 7; //emergency stop button/switch (+5V to pin when CLOSED - should have PULL DOWN resistor)
 const int key_pin = 8; //security key (switch) (+5V to pin when CLOSED - should have PULL DOWN resistor)
 const int flow_sensor_pin = 2; //flow rate sensor pin
-const float flow_rate_upper_limit = 3.0; //upper limit of flow rate (litres per minute)
-const float flow_rate_lower_limit = 0.5; //lower limit of flow rate (litres per minute)
+const float flow_rate_upper_limit = 3.0; //(litres per minute)upper limit of flow rate
+const float flow_rate_lower_limit = 0.5; //(litres per minute)lower limit of flow rate
 const int temp_sensor_pin = 3; //temperature sensor pin
-const float water_temp_upper_limit = 35.0; //water temp upper limit in degC
-const float water_temp_lower_limit = 8.0; //water temp lower limit in degC
-
+const float water_temp_upper_limit = 35.0; //(degrees C) water temp upper limit
+const float water_temp_lower_limit = 8.0; //(degrees C) water temp lower limit
 const boolean bypass_sensors = true; //ignore temp and flow sensors - for testing switches with machine off
 const boolean bypass_interlocks = false; //don't disable the laser if the interlocks are open (set true to not monitor the interlock circuit)
+const float startup_wait_time = 1.0; //(minutes) wait time before enabling output. ensures the coolant is flowing
+const boolean bypass_wait_time = false; //used for testing
 //CONFIG END
 
 //Date and time functions using the DS1307 RTC connected via I2C and Wire lib
@@ -113,12 +114,22 @@ boolean enable_hv_interlock(boolean state) {
   }
 }
 
-//the messages to display for each fault condition - each string should be 12 chars long ("STATUS: " + message = 20 chars)
-String fault_messages[] = { "READY       " , "CLOSE COVERS" , "E-STOP PRESS" , "KEY OFF     " , "CHECK FLOW  " , "CHECK TEMP  " };
+//the messages to display for each fault condition - each string should be 20 chars long to suit LCD
+String fault_messages[] = {
+"READY TO GO         " ,
+"CLOSE COVER(S)      " ,
+"E-STOP PRESSED      " ,
+"KEY OFF             " ,
+"CHECK FLOW RATE     " ,
+"CHECK TEMPERATURE   " ,
+"STARTING... WAIT    " };
 
 //characters to animate to show the controller is responding
 String display_anim[] = { "-   ", " -  ", "  - ", "   -" };
 int cur_anim = 0;
+
+//tracks startup time waited so far
+int waited_time = 0;
 
 int long loop_last_millis = 0; //track the exact ms length of the loop so we calculate exact flow rate values
 float loop_duration = 250; //delay between loop runs, in ms
@@ -165,7 +176,7 @@ void loop () {
   lcd.print(" (l/pm)");
 
   //fault values:
-  //0 = all good, 1 = interlocks, 2 = estop, 3 = key off, 4 = flow rate, 5 = temperature
+  //0 = all good, 1 = interlocks, 2 = estop, 3 = key off, 4 = flow rate, 5 = temperature, 6 = wait for startup delay
   
   //skip interlocks if true
    if (!bypass_interlocks) {
@@ -189,6 +200,18 @@ void loop () {
       current_faults = 5; //temp outside acceptable limits
     }
   }
+  //skip waiting for startup delay if true
+  if (!bypass_wait_time) {
+    //wait for the startup time before enabling outputs
+    if ((millis() - waited_time) < (startup_wait_time * 60000.0)) {
+        if (waited_time == 0) {
+          waited_time = millis();
+       }
+       fault_messages[6] = "STARTING... WAIT " + (String)((int)((startup_wait_time * 60000.0 - (millis() - waited_time)) / 60000.0));
+       current_faults = 6; //waiting for startup delay
+      }
+    }
+  }
   
   //enable or disable the interlock output
   if (current_faults != 0) {
@@ -199,7 +222,7 @@ void loop () {
   }
   
   //display the active fault
-  lcd.setCursor(0,3); //3rd line
-  lcd.print("STATUS: " + fault_messages[current_faults]);
+  lcd.setCursor(0,3); //4th line
+  lcd.print(fault_messages[current_faults]);
   
 }
