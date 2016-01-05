@@ -200,16 +200,16 @@ void loop () {
       current_faults = 5; //temp outside acceptable limits
     }
   }
+  
   //skip waiting for startup delay if true
   if (!bypass_wait_time) {
     //wait for the startup time before enabling outputs
     if ((millis() - waited_time) < (startup_wait_time * 60000.0)) {
-        if (waited_time == 0) {
-          waited_time = millis();
-       }
-       fault_messages[6] = "STARTING... WAIT " + (String)((int)((startup_wait_time * 60000.0 - (millis() - waited_time)) / 60000.0));
-       current_faults = 6; //waiting for startup delay
+      if (waited_time == 0) {
+        waited_time = millis();
       }
+      fault_messages[6] = "STARTING... WAIT " + (String)((int)((startup_wait_time * 60000.0 - (millis() - waited_time)) / 60000.0));
+      current_faults = 6; //waiting for startup delay
     }
   }
   
