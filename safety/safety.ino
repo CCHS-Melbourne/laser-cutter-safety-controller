@@ -3,6 +3,7 @@
 //
 // TODO: data logging using SD card
 //
+// updated by Tim E 12/01/2016
 
 //CONFIG START
 const int mega_reset_pin = 9; //the output pin to pull low for resetting the RAMPS
@@ -14,9 +15,12 @@ const int key_pin = 8; //security key (switch) (+5V to pin when CLOSED - should 
 const int flow_sensor_pin = 2; //flow rate sensor pin
 const float flow_rate_upper_limit = 3.0; //(litres per minute)upper limit of flow rate
 const float flow_rate_lower_limit = 0.5; //(litres per minute)lower limit of flow rate
-const int temp_sensor_pin = 3; //temperature sensor pin
-const float water_temp_upper_limit = 35.0; //(degrees C) water temp upper limit
-const float water_temp_lower_limit = 8.0; //(degrees C) water temp lower limit
+const int temp_sensor_pin_1 = 3; //temperature sensor pin
+const float water_temp_upper_limit_1 = 35.0; //(degrees C) water temp upper limit
+const float water_temp_lower_limit_1 = 8.0; //(degrees C) water temp lower limit
+const int temp_sensor_pin_2 = 4; //temperature sensor pin
+const float water_temp_upper_limit_2 = 35.0; //(degrees C) water temp upper limit
+const float water_temp_lower_limit_2 = 8.0; //(degrees C) water temp lower limit
 const boolean bypass_sensors = true; //ignore temp and flow sensors - for testing switches with machine off
 const boolean bypass_interlocks = false; //don't disable the laser if the interlocks are open (set true to not monitor the interlock circuit)
 const float startup_wait_time = 1.0; //(minutes) wait time before enabling output. ensures the coolant is flowing
@@ -36,8 +40,10 @@ LiquidCrystal_I2C	lcd(0x3f,2,1,0,4,5,6,7); //0x27 is the default I2C bus address
 RTC_DS1307 RTC;
 
 //set up the temp sensor
-OneWire tempWire(temp_sensor_pin);
-DallasTemperature temp_sensor(&tempWire);
+OneWire tempWire1(temp_sensor_pin_1);
+OneWire tempWire2(temp_sensor_pin_2);
+DallasTemperature temp_sensor_1(&tempWire1);
+DallasTemperature temp_sensor_2(&tempWire2);
 
 //the flow sensor hardware interrupt function
 volatile uint16_t flow_pulses = 0; //stores the number of pulses between calls of the main loop
@@ -71,7 +77,8 @@ void setup () {
   } 
   
   //===temp sensor setup===
-  temp_sensor.begin();
+  temp_sensor_1.begin();
+  temp_sensor_2.begin();
   
   //===LCD setup====
   lcd.begin (20,4); //for 20 x 4 LCD module
@@ -121,7 +128,8 @@ String fault_messages[] = {
 "E-STOP PRESSED      " ,
 "KEY OFF             " ,
 "CHECK FLOW RATE     " ,
-"CHECK TEMPERATURE   " ,
+"CHECK TEMPERATURE 1 " ,
+"CHECK TEMPERATURE 2 " ,
 "STARTING... WAIT    " };
 
 //characters to animate to show the controller is responding
@@ -130,6 +138,10 @@ int cur_anim = 0;
 
 //tracks startup time waited so far
 int waited_time = 0;
+
+//values to flip flop between temp 1 and temp 2 valeus display
+boolean temp_display_alt = false; //display value 2
+int long last_displayed_temp = millis(); //time since last changed
 
 int long loop_last_millis = 0; //track the exact ms length of the loop so we calculate exact flow rate values
 float loop_duration = 250; //delay between loop runs, in ms
@@ -160,14 +172,25 @@ void loop () {
   }
   
   //get water temp
-  float water_temp = temp_sensor.getTempCByIndex(0);
+  float water_temp_1 = temp_sensor_1.getTempCByIndex(0);
+  float water_temp_2 = temp_sensor_2.getTempCByIndex(0);
   
   //display temp
   lcd.setCursor(0,1); //go to start of 2nd line
   temp_sensor.requestTemperatures();
-  lcd.print("Temp: ");
-  lcd.print(water_temp); //print reading
-  lcd.print("degC    ");
+  if (temp_display_alt) {
+    lcd.print("Temp(1): ");
+    lcd.print(water_temp_1); //print reading
+  }
+  else {
+    lcd.print("Temp(2): ");
+    lcd.print(water_temp_2); //print reading
+  }
+  lcd.print("degC  ");
+  if ((millis() - last_displayed_temp) > 3000) {
+    temp_display_alt = !temp_display_alt; //show the other value next loop
+    last_displayed_temp = millis();
+  }
 
   //display the flow rate
   lcd.setCursor(0,2); //3rd line
@@ -196,8 +219,11 @@ void loop () {
     if (flow_rate > flow_rate_upper_limit || flow_rate < flow_rate_lower_limit) {
       current_faults = 4; //flow rate outside acceptable limits
     }
-    if (water_temp > water_temp_upper_limit || water_temp < water_temp_lower_limit) {
+    if (water_temp_1 > water_temp_upper_limit_1 || water_temp_1 < water_temp_lower_limit_1) {
       current_faults = 5; //temp outside acceptable limits
+    }
+    if (water_temp_2 > water_temp_upper_limit_2 || water_temp_2 < water_temp_lower_limit_2) {
+      current_faults = 6; //temp outside acceptable limits
     }
   }
   
@@ -208,8 +234,8 @@ void loop () {
       if (waited_time == 0) {
         waited_time = millis();
       }
-      fault_messages[6] = "STARTING... WAIT " + (String)((int)((startup_wait_time * 60000.0 - (millis() - waited_time)) / 60000.0));
-      current_faults = 6; //waiting for startup delay
+      fault_messages[7] = "STARTING... WAIT " + (String)((int)((startup_wait_time * 60000.0 - (millis() - waited_time)) / 60000.0));
+      current_faults = 7; //waiting for startup delay
     }
   }
   
