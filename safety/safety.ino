@@ -3,7 +3,7 @@
 //
 // TODO: data logging using SD card
 //
-// updated by Tim E 12/01/2016
+// updated by Tim E 13/02/2016
 
 //CONFIG START
 const int mega_reset_pin = 9; //the output pin to pull low for resetting the RAMPS
@@ -13,18 +13,18 @@ const int interlock_pin = 6; //interlock circuit pin (+5V to pin when CLOSED - s
 const int estop_pin = 7; //emergency stop button/switch (+5V to pin when CLOSED - should have PULL DOWN resistor)
 const int key_pin = 8; //security key (switch) (+5V to pin when CLOSED - should have PULL DOWN resistor)
 const int flow_sensor_pin = 2; //flow rate sensor pin
-const float flow_rate_upper_limit = 3.0; //(litres per minute)upper limit of flow rate
-const float flow_rate_lower_limit = 0.5; //(litres per minute)lower limit of flow rate
+const float flow_rate_upper_limit = 10.0; //(litres per minute)upper limit of flow rate
+const float flow_rate_lower_limit = 3.0; //(litres per minute)lower limit of flow rate
 const int temp_sensor_pin_1 = 3; //temperature sensor pin
 const float water_temp_upper_limit_1 = 35.0; //(degrees C) water temp upper limit
 const float water_temp_lower_limit_1 = 8.0; //(degrees C) water temp lower limit
 const int temp_sensor_pin_2 = 4; //temperature sensor pin
 const float water_temp_upper_limit_2 = 35.0; //(degrees C) water temp upper limit
 const float water_temp_lower_limit_2 = 8.0; //(degrees C) water temp lower limit
-const boolean bypass_sensors = true; //ignore temp and flow sensors - for testing switches with machine off
-const boolean bypass_interlocks = false; //don't disable the laser if the interlocks are open (set true to not monitor the interlock circuit)
+const boolean bypass_sensors = false; //ignore temp and flow sensors - for testing switches with machine off
+const boolean bypass_interlocks = true; //don't disable the laser if the interlocks are open (set true to not monitor the interlock circuit)
 const float startup_wait_time = 1.0; //(minutes) wait time before enabling output. ensures the coolant is flowing
-const boolean bypass_wait_time = false; //used for testing
+const boolean bypass_wait_time = true; //used for testing
 //CONFIG END
 
 //Date and time functions using the DS1307 RTC connected via I2C and Wire lib
@@ -123,7 +123,7 @@ boolean enable_hv_interlock(boolean state) {
 
 //the messages to display for each fault condition - each string should be 20 chars long to suit LCD
 String fault_messages[] = {
-"READY TO GO         " ,
+"READY TO CUT        " ,
 "CLOSE COVER(S)      " ,
 "E-STOP PRESSED      " ,
 "KEY OFF             " ,
@@ -177,7 +177,8 @@ void loop () {
   
   //display temp
   lcd.setCursor(0,1); //go to start of 2nd line
-  temp_sensor.requestTemperatures();
+  temp_sensor_1.requestTemperatures();
+  temp_sensor_2.requestTemperatures();
   if (temp_display_alt) {
     lcd.print("Temp(1): ");
     lcd.print(water_temp_1); //print reading
@@ -196,7 +197,7 @@ void loop () {
   lcd.setCursor(0,2); //3rd line
   lcd.print("Flow: ");
   lcd.print(flow_rate);
-  lcd.print(" (l/pm)");
+  lcd.print(" (l/pm)  ");
 
   //fault values:
   //0 = all good, 1 = interlocks, 2 = estop, 3 = key off, 4 = flow rate, 5 = temperature, 6 = wait for startup delay
@@ -234,7 +235,8 @@ void loop () {
       if (waited_time == 0) {
         waited_time = millis();
       }
-      fault_messages[7] = "STARTING... WAIT " + (String)((int)((startup_wait_time * 60000.0 - (millis() - waited_time)) / 60000.0));
+      float lcd_value = (startup_wait_time * 60000.0 - (millis() - waited_time)) / 1000.0;
+      fault_messages[7] = "STARTING... WAIT " + (String)(int)lcd_value;
       current_faults = 7; //waiting for startup delay
     }
   }
