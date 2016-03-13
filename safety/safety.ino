@@ -1,9 +1,7 @@
 //
 // Hello :) visit hackmelbourne.org
 //
-// TODO: data logging using SD card
-//
-// updated by Tim E 13/02/2016
+// updated by Tim E 13/03/2016
 
 //CONFIG START
 const int mega_reset_pin = 9; //the output pin to pull low for resetting the RAMPS
@@ -12,15 +10,23 @@ const int ready_led_pin = 11; //LED to show HV supply is READY (no interlocks op
 const int interlock_pin = 6; //interlock circuit pin (+5V to pin when CLOSED - should have PULL DOWN resistor)
 const int estop_pin = 7; //emergency stop button/switch (+5V to pin when CLOSED - should have PULL DOWN resistor)
 const int key_pin = 8; //security key (switch) (+5V to pin when CLOSED - should have PULL DOWN resistor)
+
+const boolean use_flow_sensor = true; //enable the flow sensor
 const int flow_sensor_pin = 2; //flow rate sensor pin
 const float flow_rate_upper_limit = 10.0; //(litres per minute)upper limit of flow rate
-const float flow_rate_lower_limit = 3.0; //(litres per minute)lower limit of flow rate
+const float flow_rate_lower_limit = 1.5; //(litres per minute)lower limit of flow rate
+
+const boolean use_temp_sensor_1 = true; //enable the temp sensor 1
 const int temp_sensor_pin_1 = 3; //temperature sensor pin
-const float water_temp_upper_limit_1 = 35.0; //(degrees C) water temp upper limit
-const float water_temp_lower_limit_1 = 8.0; //(degrees C) water temp lower limit
+const float water_temp_upper_limit_1 = 28.0; //(degrees C) water temp upper limit
+const float water_temp_lower_limit_1 = 14.0; //(degrees C) water temp lower limit
+
+const boolean use_temp_sensor_2 = false; //use temp sensor 2 (currently disabled as it is not wired properly)
 const int temp_sensor_pin_2 = 4; //temperature sensor pin
-const float water_temp_upper_limit_2 = 35.0; //(degrees C) water temp upper limit
-const float water_temp_lower_limit_2 = 8.0; //(degrees C) water temp lower limit
+const float water_temp_upper_limit_2 = 28.0; //(degrees C) water temp upper limit
+const float water_temp_lower_limit_2 = 14.0; //(degrees C) water temp lower limit
+
+//bypasses
 const boolean bypass_sensors = false; //ignore temp and flow sensors - for testing switches with machine off
 const boolean bypass_interlocks = true; //don't disable the laser if the interlocks are open (set true to not monitor the interlock circuit)
 const float startup_wait_time = 1.0; //(minutes) wait time before enabling output. ensures the coolant is flowing
@@ -29,15 +35,11 @@ const boolean bypass_wait_time = true; //used for testing
 
 //Date and time functions using the DS1307 RTC connected via I2C and Wire lib
 #include "Wire.h" //I2C
-#include "RTClib.h" //RTC
 #include "LiquidCrystal_I2C.h" //LCD
 #include "DallasTemperature.h" //temp sensor
 
 //create the LCD object. firs param is the address. no idea what other params are, they were in the tronixlabs's example code. seems to work.
-LiquidCrystal_I2C	lcd(0x3f,2,1,0,4,5,6,7); //0x27 is the default I2C bus address for an unmodified backpack [mine uses 0x3f]
-
-//create the RTC object
-RTC_DS1307 RTC;
+LiquidCrystal_I2C	lcd(0x3f,2,1,0,4,5,6,7); //0x27 is the default I2C bus address for an unmodified backpack, others use 0x3f
 
 //set up the temp sensor
 OneWire tempWire1(temp_sensor_pin_1);
@@ -63,22 +65,17 @@ void setup () {
   digitalWrite(4, LOW);
   
   //===flow sensor setup===
-  attachInterrupt(digitalPinToInterrupt(flow_sensor_pin), flow_sense, RISING); //set up the hardware interrupt to call 'flow_sense' on the RISING
-  
-  //===RTCsetup=====
-  Wire.begin();
-  RTC.begin();
-  //set the clock, if not already set
-  if (! RTC.isrunning()) { 
-    Serial.println("RTC is NOT running!");
-    //the following line sets the RTC to the date & time this sketch was compiled
-    //uncomment it & upload to set the time and start the RTC!
-    //RTC.adjust(DateTime(__DATE__, __TIME__));
-  } 
+  if (use_flow_sensor) {
+    attachInterrupt(digitalPinToInterrupt(flow_sensor_pin), flow_sense, RISING); //set up the hardware interrupt to call 'flow_sense' on the RISING  
+  }
   
   //===temp sensor setup===
-  temp_sensor_1.begin();
-  temp_sensor_2.begin();
+  if (use_temp_sensor_1) {
+    temp_sensor_1.begin();
+  }
+  if (use_temp_sensor_2) {
+    temp_sensor_2.begin();
+  }
   
   //===LCD setup====
   lcd.begin (20,4); //for 20 x 4 LCD module
@@ -88,22 +85,6 @@ void setup () {
   //(the first delay(); will go for longer while this happens)
   lcd.home();
   lcd.print("Loading..."); 
-}
-
-//adds a leading '0' to a number less than 10. to keep the datetime string a consistent length
-String digAdd(int number) {
-  if (number >= 0 && number < 10) {
-    return "0" + (String)number;
-  }
-  else {
-    return (String)number;
-  }
-}
-
-//returns a string of the current date/time
-String getTime() {
-  DateTime now = RTC.now();
-  return digAdd(now.day()) + "/" + digAdd(now.month()) + "/" + now.year() + " " + digAdd(now.hour()) + ":" + digAdd(now.minute()) + ":" + digAdd(now.second());
 }
 
 //set the HV interlock output on or off
@@ -143,10 +124,44 @@ int waited_time = 0;
 boolean temp_display_alt = false; //display value 2
 int long last_displayed_temp = millis(); //time since last changed
 
+//average out the flow sensor values
+boolean average_complete = false; //make sure we have used all values before doing the calculation or it will be skewed by the default values of 0 for the first minute.
+int currentPulseValue = 0; //which was the last value to be updated
+int flow_pulses_avg[] = { 0,0,0,0,0,0 }; //store 6 pulse counts - every ten seconds for a minute's worth of values
+
+//should be called every 10 seconds by the loop
+void flow_pulse_update () {
+  flow_pulses_avg[currentPulseValue] = flow_pulses; //get value from the interrupt
+  flow_pulses = 0; //reset the interrupt
+  if (currentPulseValue == 5) {
+    currentPulseValue = 0; //reset the value to update
+    if (!average_complete) {
+      average_complete = true; //tell the loop we have got all the values stored now
+    }
+  }
+  else{
+    currentPulseValue++; //increment the value we are saving into
+  }
+}
+
+//calculate the average flowrate pulses / min upon request
+float flow_pulse_average () {
+  return (float)((flow_pulses_avg[0] + flow_pulses_avg[1] + flow_pulses_avg[2] + flow_pulses_avg[3] + flow_pulses_avg[4] + flow_pulses_avg[5]) / 6.00);
+}
+
 int long loop_last_millis = 0; //track the exact ms length of the loop so we calculate exact flow rate values
-float loop_duration = 250; //delay between loop runs, in ms
+int long loop_last_flow_update = 0; //track the exact ms since updating the flow rate values last
+float loop_duration = 1000; //delay between LCD updates, in ms
 void loop () {
-   
+
+  //check when flow rates were last updated and update them
+  if (use_flow_sensor) {
+    if (!((millis() - loop_last_flow_update) < 1000)) { //every 11 sec
+      loop_last_flow_update = millis();
+      flow_pulse_update();
+    }
+  }
+  
   //track exactly how long since loop last ran and make sure we run it every x ms exactly
   if ((millis() - loop_last_millis) < loop_duration) {
     return;
@@ -156,14 +171,16 @@ void loop () {
   }
 
   //450 pulses per litre as per https://www.adafruit.com/products/828
-  //convert to L/min based on number of pulses since the loop last ran
-  float flow_rate = (flow_pulses / 450.00) * 60.00 * (1000.00 / loop_duration);
-  flow_pulses = 0; //now that the value is read, reset the pulses until next read
+  //convert to L/min based on number of pulses since the loop last ran 
+  float flow_rate; 
+  if (use_flow_sensor){
+    flow_rate = (flow_pulse_average() / 450.0) * 60.0 * 6.0;
+  }
 
   //track which fault has ocurred
   int current_faults = 0; //0 = all good, 1 = interlocks, 2 = estop, 3 = key off, 4 = flow rate, 5 = temperature
 
-  //display the date / time
+  //display some values
   lcd.home(); //set cursor to 0,0
   lcd.print("Laser Cutter V2 " + display_anim[cur_anim]);
   cur_anim++;
@@ -171,39 +188,55 @@ void loop () {
     cur_anim = 0;
   }
   
-  //get water temp
-  float water_temp_1 = temp_sensor_1.getTempCByIndex(0);
-  float water_temp_2 = temp_sensor_2.getTempCByIndex(0);
-  
-  //display temp
+  //get water temp and display it
   lcd.setCursor(0,1); //go to start of 2nd line
-  temp_sensor_1.requestTemperatures();
-  temp_sensor_2.requestTemperatures();
-  if (temp_display_alt) {
-    lcd.print("Temp(1): ");
+  float water_temp_1;
+  float water_temp_2;
+  if (use_temp_sensor_1) {
+    water_temp_1 = temp_sensor_1.getTempCByIndex(0);
+    temp_sensor_1.requestTemperatures();
+  }
+  if (use_temp_sensor_2) {
+    water_temp_2 = temp_sensor_2.getTempCByIndex(0);
+    temp_sensor_2.requestTemperatures();
+  }
+  if (!use_temp_sensor_1){
+    lcd.print("Temp: ");
+    lcd.print(water_temp_2); //print reading
+  }
+  else if( !use_temp_sensor_2) {
+    lcd.print("Temp: ");
     lcd.print(water_temp_1); //print reading
   }
   else {
-    lcd.print("Temp(2): ");
-    lcd.print(water_temp_2); //print reading
-  }
-  lcd.print("degC  ");
-  if ((millis() - last_displayed_temp) > 3000) {
-    temp_display_alt = !temp_display_alt; //show the other value next loop
-    last_displayed_temp = millis();
+    if (temp_display_alt) {
+      lcd.print("Temp(1): ");
+      lcd.print(water_temp_1); //print reading
+    }
+    else {
+      lcd.print("Temp(2): ");
+      lcd.print(water_temp_2); //print reading
+    }
+    lcd.print("degC  ");
+    if ((millis() - last_displayed_temp) > 3000) {
+      temp_display_alt = !temp_display_alt; //show the other value next loop
+      last_displayed_temp = millis();
+    }
   }
 
   //display the flow rate
-  lcd.setCursor(0,2); //3rd line
-  lcd.print("Flow: ");
-  lcd.print(flow_rate);
-  lcd.print(" (l/pm)  ");
+  if (use_flow_sensor) {
+    lcd.setCursor(0,2); //3rd line
+    lcd.print("Flow: ");
+    lcd.print(flow_rate);
+    lcd.print(" (l/pm)  ");
+  }
 
   //fault values:
   //0 = all good, 1 = interlocks, 2 = estop, 3 = key off, 4 = flow rate, 5 = temperature, 6 = wait for startup delay
   
   //skip interlocks if true
-   if (!bypass_interlocks) {
+  if (!bypass_interlocks) {
     //if interlock switches were opened
     if (digitalRead(interlock_pin) == LOW) {
       current_faults = 1; //interlocks opened
@@ -217,14 +250,20 @@ void loop () {
   }
   //skip these two sensors if true
   if (!bypass_sensors) {
-    if (flow_rate > flow_rate_upper_limit || flow_rate < flow_rate_lower_limit) {
-      current_faults = 4; //flow rate outside acceptable limits
+    if (use_flow_sensor) {
+      if (flow_rate > flow_rate_upper_limit || flow_rate < flow_rate_lower_limit) {
+        current_faults = 4; //flow rate outside acceptable limits
+      }
     }
-    if (water_temp_1 > water_temp_upper_limit_1 || water_temp_1 < water_temp_lower_limit_1) {
-      current_faults = 5; //temp outside acceptable limits
+    if (use_temp_sensor_1) {
+      if (water_temp_1 > water_temp_upper_limit_1 || water_temp_1 < water_temp_lower_limit_1) {
+        current_faults = 5; //temp outside acceptable limits
+      }
     }
-    if (water_temp_2 > water_temp_upper_limit_2 || water_temp_2 < water_temp_lower_limit_2) {
-      current_faults = 6; //temp outside acceptable limits
+    if (use_temp_sensor_2) {
+      if (water_temp_2 > water_temp_upper_limit_2 || water_temp_2 < water_temp_lower_limit_2) {
+        current_faults = 6; //temp outside acceptable limits
+      }
     }
   }
   
