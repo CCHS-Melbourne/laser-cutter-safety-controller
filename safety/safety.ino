@@ -1,17 +1,19 @@
 //
 // Hello :) visit hackmelbourne.org
 //
-// updated by Tim E 14/03/2016
+// updated by Tim E 06/04/2016
+//
 
 //CONFIG START
 
-#define hv_interlock_pin 10 //the output pin driving the relay to interrupt the interlock circuit
-#define ready_led_pin 12 //LED to show HV supply is READY (no interlocks opened)
+#define hv_interlock_pin 10 //the output pin driving the relay to interrupt the interlock circuit. HIGH closes the relay
+//hv_interlock_pin + 1 is used as a second pin to drive the relay on the LCV2. this is because they are rated to 40mA and the relay draws 60mA... lol
+#define ready_led_pin 12 //LED to show HV supply is READY (no interlocks opened) (not used on laser cutter V2 at the moment)
 
-#define bypass_interlocks true //set true to ignore the state of these pins
+#define bypass_interlocks true //set true to ignore the state of the interlock switches (currently true because LCV2 does not have suitable switches)
 #define interlock_pin 6 //interlock circuit pin (+5V to pin when CLOSED - should have PULL DOWN resistor)
 #define estop_pin 7 //emergency stop button/switch (+5V to pin when CLOSED - should have PULL DOWN resistor)
-#define key_pin 8 //security key (switch) (+5V to pin when CLOSED - should have PULL DOWN resistor)
+#define key_pin 8 //arm/disarm key (switch) (+5V to pin when CLOSED - should have PULL DOWN resistor)
 
 #define bypass_sensors false //set true to ignore the following sensors
 
@@ -25,7 +27,7 @@
 #define water_temp_upper_limit_1 24 //(degrees C) water temp upper limit
 #define water_temp_lower_limit_1 14 //(degrees C) water temp lower limit
 
-#define use_temp_sensor_2 false //use temp sensor 2 (currently disabled as it is not wired properly)
+#define use_temp_sensor_2 false //use temp sensor 2 (currently disabled as it is not wired properly on LCV2)
 #define temp_sensor_pin_2 4 //temperature sensor pin
 #define water_temp_upper_limit_2 24 //(degrees C) water temp upper limit
 #define water_temp_lower_limit_2 14 //(degrees C) water temp lower limit
@@ -37,9 +39,9 @@
 #include "DallasTemperature.h" //temp sensor
 
 //create the LCD object. firs param is the address. no idea what other params are, they were in the tronixlabs's example code. seems to work.
-LiquidCrystal_I2C	lcd(0x3f,2,1,0,4,5,6,7); //0x27 is the default I2C bus address for an unmodified backpack, others use 0x3f
+LiquidCrystal_I2C lcd(0x3f,2,1,0,4,5,6,7); //0x27 is the default I2C bus address for an unmodified backpack, others use 0x3f
 
-//set up the temp sensor
+//set up the temp sensors objects
 OneWire tempWire1(temp_sensor_pin_1);
 OneWire tempWire2(temp_sensor_pin_2);
 DallasTemperature temp_sensor_1(&tempWire1);
@@ -47,21 +49,18 @@ DallasTemperature temp_sensor_2(&tempWire2);
 
 volatile uint16_t flow_pulses = 0; //stores number of pulses
 volatile uint8_t lastflowpinstate; //track the state of the pulse pin
-SIGNAL(TIMER0_COMPA_vect) { //Interrupt is called once a millisecond, looks for any pulses from the sensor!
-  uint8_t x = digitalRead(flow_sensor_pin);
-  
+SIGNAL(TIMER0_COMPA_vect) { //this interrupt is called once a millisecond
+  uint8_t x = digitalRead(flow_sensor_pin); //read the state of the flow sensor pin
   if (x == lastflowpinstate) {
-    return; // nothing changed!
+    return; //state not changed
   }
-  
   if (x == HIGH) {
-    //low to high transition!
-    flow_pulses++;
+    flow_pulses++; //low to high transition - increment pulse count
   }
-  lastflowpinstate = x;
+  lastflowpinstate = x; //update the last known state of the pin
 }
 
-void useInterrupt(boolean v) {
+void useInterrupt(boolean v) { //not sure what this does... it's from the adafruit example. see comments below
   if (v) {
     // Timer0 is already used for millis() - we'll just interrupt somewhere
     // in the middle and call the "Compare A" function above
@@ -74,24 +73,22 @@ void useInterrupt(boolean v) {
 }
 
 void setup () {
-	
-  Serial.begin(9600); //for debug purposes
   
-  //===interlocks setup===
+  //===interlock pins setup===
   pinMode(interlock_pin, INPUT);
   pinMode(estop_pin, INPUT);
   pinMode(key_pin, INPUT);
   pinMode(hv_interlock_pin, OUTPUT);
-  pinMode(hv_interlock_pin + 1, OUTPUT);
+  pinMode(hv_interlock_pin + 1, OUTPUT); //the second pin
   digitalWrite(hv_interlock_pin, LOW);
-  digitalWrite(hv_interlock_pin + 1, LOW);
+  digitalWrite(hv_interlock_pin + 1, LOW); //the second pin
   
   //===flow sensor setup===
   if (use_flow_sensor) {
-    pinMode(flow_sensor_pin, INPUT);
-    digitalWrite(flow_sensor_pin, HIGH);
-    lastflowpinstate = digitalRead(flow_sensor_pin);
-    useInterrupt(true);
+    pinMode(flow_sensor_pin, INPUT); //set the pin mode
+    digitalWrite(flow_sensor_pin, HIGH); //pull it high
+    lastflowpinstate = digitalRead(flow_sensor_pin); //set an initial value
+    useInterrupt(true); //do whatever this does
   }
   
   //===temp sensor setup===
@@ -110,7 +107,7 @@ void setup () {
   lcd.print("Loading..."); 
 }
 
-//set the HV interlock output on or off
+//sets the HV interlock output on or off (sets state of pins and the LED)
 boolean enable_hv_interlock(boolean state) {
 
   if (state) {
@@ -125,7 +122,7 @@ boolean enable_hv_interlock(boolean state) {
   }
 }
 
-//the messages to display for each fault condition - each string should be 20 chars long to suit LCD
+//the messages to display on the LCD for each fault condition - each string should be 20 chars long to suit LCD. Empty spaces are needed so remnants of longer strings don't stick around
 String fault_messages[] = {
 "READY TO CUT        " ,
 "CLOSE COVER(S)      " ,
@@ -139,32 +136,32 @@ String fault_messages[] = {
 const String display_anim[] = { "-   ", " -  ", "  - ", "   -" };
 int cur_anim = 0;
 
-//use these values to flip flop between temp 1 and temp 2 on the LCD
+//use these values to flip flop between displaying temp 1 and temp 2 on the LCD
 boolean temp_display_alt = false; //display value 2
 int long last_displayed_temp = millis(); //time since last changed
 
 //average out the flow sensor values
 int currentPulseValue = 0; //which was the last value to be updated
-int flow_pulses_avg[] = { 0,0,0,0,0,0 }; //store a pulse count once a second, keeping six to average
+int flow_pulses_avg[] = { 0,0,0,0,0,0 }; //stores 6 pulse counts for averaging out
 
-//should be called every 1 second by the main loop
-int long loop_last_flow_update = 0; //track the ms since updating last
+//should be called every x ms by the main loop
+int long loop_last_flow_update = 0; //track the ms since updated last
 void flow_pulse_update () {
-  flow_pulses_avg[currentPulseValue] = flow_pulses; //get value from the interrupt
-  flow_pulses = 0; //reset the interrupt
+  flow_pulses_avg[currentPulseValue] = flow_pulses; //get value from the interrupt function
+  flow_pulses = 0; //reset the interrupt count
   if (currentPulseValue == 5) {
     currentPulseValue = 0; //reset the value to update
   } else {
-    currentPulseValue++; //increment the value we are saving into
+    currentPulseValue++; //increment the array value we are saving into
   }
 }
 
-//calculate the average flowrate pulses / min upon request
+//returns the average of the last six flow sensor pulses we have stored
 float flow_pulse_average () {
   return (flow_pulses_avg[0] + flow_pulses_avg[1] + flow_pulses_avg[2] + flow_pulses_avg[3] + flow_pulses_avg[4] + flow_pulses_avg[5]) / 6.0;
 }
 
-int long loop_last_millis = 0; //track the exact ms length of the loop so we calculate exact flow rate values
+int long loop_last_millis = 0; //tracks the exact ms length of the loop so we calculate exact flow rate values
 void loop () {
 
   if ((millis() - loop_last_millis) < 1000) {
@@ -174,15 +171,13 @@ void loop () {
     loop_last_millis = millis();
   }
 
-  flow_pulse_update();
-  float flow_rate = flow_pulse_average();
-
-  Serial.println(flow_pulse_average());
+  flow_pulse_update(); //update the flow pulse count
+  float flow_rate = flow_pulse_average(); //calculate averages
 
   //track which fault has ocurred
   int current_faults = 0; //0 = all good, 1 = interlocks, 2 = estop, 3 = key off, 4 = flow rate, 5 = temperature
 
-  //display some values
+  //display some static info on the LCD
   lcd.home(); //set cursor to 0,0
   lcd.print("Laser Cutter V2 " + display_anim[cur_anim]);
   cur_anim++;
@@ -192,16 +187,12 @@ void loop () {
   
   //get water temp and display it
   lcd.setCursor(0,1); //go to start of 2nd line
-  float water_temp_1;
+  float water_temp_1; //get the values from the temp sensors
   float water_temp_2;
-  if (use_temp_sensor_1) {
-    water_temp_1 = temp_sensor_1.getTempCByIndex(0);
-    temp_sensor_1.requestTemperatures();
-  }
-  if (use_temp_sensor_2) {
-    water_temp_2 = temp_sensor_2.getTempCByIndex(0);
-    temp_sensor_2.requestTemperatures();
-  }
+  water_temp_1 = temp_sensor_1.getTempCByIndex(0);
+  temp_sensor_1.requestTemperatures();
+  water_temp_2 = temp_sensor_2.getTempCByIndex(0);
+  temp_sensor_2.requestTemperatures();
   if (!use_temp_sensor_1){
     lcd.print("Temp: ");
     lcd.print((int)water_temp_2); //print reading
