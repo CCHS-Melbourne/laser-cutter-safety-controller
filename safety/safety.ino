@@ -7,10 +7,10 @@
 //CONFIG START
 
 #define hv_interlock_pin 10 //the output pin driving the relay to interrupt the interlock circuit. HIGH closes the relay
-//hv_interlock_pin + 1 is used as a second pin to drive the relay on the LCV2. this is because they are rated to 40mA and the relay draws 60mA... lol
 #define ready_led_pin 12 //LED to show HV supply is READY (no interlocks opened) (not used on laser cutter V2 at the moment)
 
-#define bypass_interlocks true //set true to ignore the state of the interlock switches (currently true because LCV2 does not have suitable switches)
+#define bypass_interlocks true //set true to ignore the state of the interlock switches
+//(currently set true because LCV2 does not have suitable switches)
 #define interlock_pin 6 //interlock circuit pin (+5V to pin when CLOSED - should have PULL DOWN resistor)
 #define estop_pin 7 //emergency stop button/switch (+5V to pin when CLOSED - should have PULL DOWN resistor)
 #define key_pin 8 //arm/disarm key (switch) (+5V to pin when CLOSED - should have PULL DOWN resistor)
@@ -19,18 +19,18 @@
 
 #define use_flow_sensor true //enable the flow sensor
 #define flow_sensor_pin 2 //flow rate sensor pin
-#define flow_rate_upper_limit 5.0 //(litres per minute)upper limit of flow rate
+#define flow_rate_upper_limit 15.0 //(litres per minute)upper limit of flow rate
 #define flow_rate_lower_limit 2.0 //(litres per minute)lower limit of flow rate
 
 #define use_temp_sensor_1 true //enable the temp sensor 1
 #define temp_sensor_pin_1 3 //temperature sensor pin
 #define water_temp_upper_limit_1 24 //(degrees C) water temp upper limit
-#define water_temp_lower_limit_1 14 //(degrees C) water temp lower limit
+#define water_temp_lower_limit_1 3 //(degrees C) water temp lower limit
 
 #define use_temp_sensor_2 false //use temp sensor 2 (currently disabled as it is not wired properly on LCV2)
 #define temp_sensor_pin_2 4 //temperature sensor pin
 #define water_temp_upper_limit_2 24 //(degrees C) water temp upper limit
-#define water_temp_lower_limit_2 14 //(degrees C) water temp lower limit
+#define water_temp_lower_limit_2 3 //(degrees C) water temp lower limit
 
 //CONFIG END
 
