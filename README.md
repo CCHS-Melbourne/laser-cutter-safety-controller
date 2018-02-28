@@ -19,3 +19,12 @@ TO DO:
 ISSUES:
 
  * none i'm aware of
+
+## INSTALLING SOFTWARE ON LATER VERSIONS OF ARDUINO
+
+In the library folder do the following:
+Install the DallasTemperature from the library Mannager.https://github.com/milesburton/Arduino-Temperature-Control-Library
+Install the Liquid Crystal Display from https://bitbucket.org/fmalpartida/new-liquidcrystal/downloads/Newliquidcrystal_1.3.5.zip
+Unzip the OneWire2 folder.
+
+You should now be able to compile the Saftey 
