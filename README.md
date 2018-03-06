@@ -24,7 +24,34 @@ ISSUES:
 
 In the library folder do the following:
 Install the DallasTemperature from the library Mannager.https://github.com/milesburton/Arduino-Temperature-Control-Library
+
 Install the Liquid Crystal Display from https://bitbucket.org/fmalpartida/new-liquidcrystal/downloads/Newliquidcrystal_1.3.5.zip
+
 Unzip the OneWire2 folder.
 
 You should now be able to compile the Saftey 
+
+
+## Arduino Pin Out
+###Side 1
+2 Green
+3 Yellow
+4 Orange
+
+10 Red HV
+11 Red
+
+GND Black
+USB Connector
+
+###Side 2
+A5 White
+A4 White
+
+GND Black
+GND Blue
+5v Red
+
+5v Red
+
+5v Din plug
