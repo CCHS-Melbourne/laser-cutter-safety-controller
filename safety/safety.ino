@@ -20,7 +20,7 @@
 #define use_flow_sensor true //enable the flow sensor
 #define flow_sensor_pin 2 //flow rate sensor pin
 #define flow_rate_upper_limit 15.0 //(litres per minute)upper limit of flow rate
-#define flow_rate_lower_limit 2.0 //(litres per minute)lower limit of flow rate
+#define flow_rate_lower_limit 1.5 //(litres per minute)lower limit of flow rate
 
 #define use_temp_sensor_1 true //enable the temp sensor 1
 #define temp_sensor_pin_1 3 //temperature sensor pin
