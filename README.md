@@ -20,7 +20,7 @@ ISSUES:
 
  * none i'm aware of
 
-## INSTALLING SOFTWARE ON LATER VERSIONS OF ARDUINO
+# INSTALLING SOFTWARE ON LATER VERSIONS OF ARDUINO
 
 In the library folder do the following:
 Install the DallasTemperature from the library Mannager.https://github.com/milesburton/Arduino-Temperature-Control-Library
@@ -32,26 +32,25 @@ Unzip the OneWire2 folder.
 You should now be able to compile the Saftey 
 
 
-## Arduino Pin Out
-###Side 1
-2 Green
-3 Yellow
-4 Orange
+# Arduino Pin Out
+## Side 1
+* 2 Green
+* 3 Yellow
+* 4 Orange
 
-10 Red HV
-11 Red
+* 10 Red HV
+* 11 Red
 
-GND Black
+* GND Black
 USB Connector
 
-###Side 2
-A5 White
-A4 White
+## Side 2
+* A5 White
+* A4 White
 
-GND Black
-GND Blue
-5v Red
+* GND Black
+* GND Blue
+* 5v Red
 
-5v Red
-
+* 5v Red
 5v Din plug
